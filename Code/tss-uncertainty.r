@@ -11,6 +11,8 @@
 # (https://github.com/ansleybrown1337/bayes-tss-uncertainty)
 # ------------------------------------------------------------------------------
 
+# Set working directory to repo parent folder
+setwd(dirname(getwd()))
 
 # Load packages
 package.list <- c(
@@ -40,4 +42,36 @@ std_list <- c('Stock Solution', 'DI')
 std_df <- tss_df %>% filter(Sample_ID %in% std_list)
 real_df <- tss_df %>% filter(!Sample_ID %in% std_list)
 
-    # calculate mean and standard deviation for each standard
+    # calculate error column for standards
+std_df <- std_df %>% mutate(
+  tss.err = ifelse(Sample_ID == 'Stock Solution', 100-TSS_mg.L, 0-TSS_mg.L)
+  )
+
+# Defining our model
+# We will use simple linear regression to estimate measurement error. I will
+# assume the following form:
+
+
+# Define model in NIMBLE
+code <- nimbleCode({
+  # continuous data
+  beta0 ~ dnorm(0, sd = 100)
+  beta1 ~ dnorm(0, sd = 100)
+  # categorical data
+  beta2 ~ dnorm(0, sd = 100)
+  # variance components
+  sigma ~ dunif(0, 100)        # prior for variance components based on Gelman (2006)
+  for(i in 1:n) {
+    y[i] ~ dnorm(beta0 + beta1*x1[i] + beta2*x2[i], sd = sigma) # manual entry of linear predictors
+  }
+})
+
+## extract data for two predictors and center for better MCMC performance
+x1 <- X[,1] - mean(X[,1])
+x2 <- X[,2] - mean(X[,2])
+
+constants <- list(n = n, x1 = x1, x2 = x2)
+data <- list(y = y)
+inits <- list(beta0 = mean(y), beta1 = 0, beta2 = 0, sigma = 1)
+model <- nimbleModel(code, constants = constants, data = data, inits = inits) # build model
+
