@@ -1,4 +1,4 @@
-![Banner](Repo%20Images/tss-banner.png)
+![Banner](Repo%20Images/tss_banner.png)
 
 # Bayesian Inference for TSS Measurement Uncertainty
 By A.J. Brown <br/>
