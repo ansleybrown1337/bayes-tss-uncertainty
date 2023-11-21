@@ -1,0 +1,393 @@
+---
+title: "tss-uncertainty"
+author: "A.J. Brown"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: no
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Bayesian Inference for TSS Measurement Uncertainty
+By A.J. Brown
+Agricultural Data Scientist
+ansleybrown1337@gmail.com
+[Personal Website](https://sites.google.com/view/ansleyjbrown/)
+
+Description: This script is used to perform Bayesian inference on TSS using
+the NIMBLE package in R. For more information please view the README.md file
+in the root directory of [this repository](https://github.com/ansleybrown1337/bayes-tss-uncertainty).
+
+## Table of Contents
+1. [Load packages and data](#load-packages-and-data)
+2. [Defining our Model](#defining-our-model)
+3. [Setting the model up in NIMBLE](#setting-the-model-up-in-nimble)
+4. [Posterior Predictive Sampling](#posterior-predictive-sampling)
+5. [Running Monte Carlo Expectation Maximization](#running-monte-carlo-expectation-maximization)
+
+## Load packages and data
+```{r, warning=FALSE}
+# Set working directory to repo parent folder
+# Remember to make the knit button knit from current working directory
+#setwd('../')
+```
+
+```{r, warning=FALSE, include=FALSE}
+
+# Load packages
+package.list <- c(
+  'BayesianTools',  
+  'nimble',
+  'coda',
+  'ggplot2',
+  'dplyr',
+  'tidyr'
+  )
+packageLoad <- function(packages){
+  for (i in packages) {
+    if (!require(i, character.only = TRUE)) {
+      install.packages(i)
+      library(i, character.only = TRUE)
+    }
+  }
+}
+packageLoad(package.list)
+```
+
+```{r}
+# Load data
+tss_df <- read.csv('../Example Data/TSS_Master_2023.csv')
+```
+
+```{r}
+# Process data
+  # separate data into two dataframes: standards and real data
+std_list <- c('Stock Solution', 'DI')
+std_df <- tss_df %>% filter(Sample_ID %in% std_list)
+real_df <- tss_df %>% filter(!Sample_ID %in% std_list)
+
+  # calculate error column for standards and center it
+std_df <- std_df %>% mutate(
+  tss.err = ifelse(Sample_ID == 'Stock Solution', 100-TSS_mg.L, 0-TSS_mg.L)
+  )
+  
+  # change our categorical columns of interest into numbers
+std_df$Sample_ID.num <- as.numeric(as.factor(std_df$Sample_ID))
+std_df$Lab_technicians.num <- as.numeric(as.factor(std_df$Lab_technicians))
+
+  # center our error
+std_df$tss.err.ctr <- std_df$tss.err - mean(std_df$tss.err)
+```
+
+## Defining our model
+We will use simple linear regression to estimate measurement error. I will
+assume the following form:
+$$
+TSSerr_{i} = \alpha_i + \beta_{1, i} * person_i  + \epsilon_{i}
+$$
+Where:
+- $TSSerr_{i}$ is the error in TSS measurement $i$ <br/>
+- $\alpha_i$ is the intercept for TSS measurement $i$ <br/>
+- $\beta_{1, i}$ is the coefficient for the person performing the analysis <br/>
+- $\epsilon_{i}$ is the error term for TSS measurement $i$
+
+## Setting the model up in NIMBLE 
+### Step 1: Define the model
+```{r, warning=FALSE}
+# Step 1: Define the model
+code <- nimbleCode({
+  # Defining our priors
+  alpha ~ dnorm(0, sd = 1) # intercept
+  
+  # Looping over the elements of person: they each get their own prior, and we will assume they are the same to start
+  for(k in 1:3) {
+    beta1[k] ~ dnorm(0, sd = 1)
+  }
+  
+  sigma ~ dunif(0, 100) # prior for variance components based on Gelman (2006)
+
+  # Defining our linear model
+  for(i in 1:n) {
+    err[i] ~ dnorm(alpha + beta1[person[i]], sd = sigma)
+  }
+})
+
+constants <- list(
+  n = nrow(std_df), 
+  person = std_df$Lab_technicians.num
+  )
+
+data <- list(
+  err = std_df$tss.err
+  ) # also try using std_df$tss.err.ctr
+
+inits <- list(
+  alpha = mean(std_df$tss.err), 
+  beta1 = rep(0, 3), 
+  sigma = 1
+  )
+
+model <- nimbleModel(
+  code, 
+  constants = constants, 
+  data = data, 
+  inits = inits
+  ) # build model
+```
+### Step 2: Build the MCMC
+```{r}
+#mcmcErr <- configureMCMC(model) # assign default samplers to nodes
+# Step 2: Build the MCMC
+TSSmcmc <- buildMCMC(model, enableWAIC = TRUE)
+```
+
+### Step 3: Compile the model and MCMC into C++ using Rtools
+```{r, warning=FALSE}
+# Step 3a: Compile the model
+cTSSmodel <- compileNimble(model,showCompilerOutput = FALSE)
+```
+
+```{r, warning=FALSE}
+# Step 3b: Compile the MCMC
+cTSSmcmc <- compileNimble(TSSmcmc, project = model)
+```
+
+### Step 4: Run the MCMC
+```{r}
+# Step 4: Run the MCMC
+time_baseline <- system.time(
+  TSSresults <- runMCMC(cTSSmcmc,
+                        niter=11000,
+                        nburnin=1000, # change to 0 if you want to see burn in
+                        WAIC=TRUE,
+                        nchains=1)
+  )
+cat("Sampling time: ", time_baseline[3], "seconds.\n")
+```
+
+### Step 5: Extract the samples and WAIC
+```{r}
+# Step 5: Extract the samples and WAIC
+  # Samples
+samples <- TSSresults$samples
+#colnames(samples)
+summary(samples)
+  # Watanabe-Akaike Information Criterion (WAIC): captures model fit
+  # Log Pointwise Predictive Density (LPPD): captures model complexity
+  # effective number of parameters in the model (pWAIC): balances previous two
+  # The relationship: WAIC=−2×lppd+2×pWAIC
+cat("  \n\nWAIC Results:\n\n")  # Two spaces before \n\n
+WAIC <- TSSresults$WAIC
+WAIC
+```
+
+### Step 6: Inspect Convergence
+```{r, results='hide'}
+# Step 6: Inspect Convergence
+
+# plot single trace to show convergence, but save the rest as separate images/pdfs b/c they are large
+plot(as.mcmc(samples[,1]))
+
+  # has to be pdf to capture all output
+pdf('../Output/trace_density_plots.pdf')
+plot(as.mcmc(samples))
+dev.off()
+
+png('../Output/correlation_plots.png')
+correlationPlot(samples)
+dev.off()
+
+png('../Output/marginal_plot.png')
+marginalPlot(samples)
+dev.off()
+```
+Looking at our trace plots, we can see that our chains have converged. We can also see that our marginal density plots are approximately normal. Our correlation plots show that our chains are not correlated, which is also good. Given this, we can start to derive some insight from our model.
+
+## Posterior Predictive Sampling
+### Create a nimbleFunction to simulate new datasets
+```{r}
+# https://r-nimble.org/nimbleExamples/posterior_predictive.html
+# Create a nimbleFunction to simulate new datasets
+ppSamplerNF <- nimbleFunction(
+          setup = function(model, mcmc) {
+              dataNodes <- model$getNodeNames(dataOnly = TRUE)
+              parentNodes <- model$getParents(dataNodes, stochOnly = TRUE)
+              cat("Stochastic parents of data are:\n", paste(parentNodes, collapse = ','), ".\n\n")
+              simNodes <- model$getDependencies(parentNodes, self = FALSE)
+              vars <- mcmc$mvSamples$getVarNames()  # need ordering of variables in mvSamples / samples matrix
+              cat("Using posterior samples of:\n", paste(vars, collapse = ','), ".\n\n")
+              n <- length(model$expandNodeNames(dataNodes, returnScalarComponents = TRUE))
+          },
+          run = function(samples = double(2)) {
+              nSamp <- dim(samples)[1]
+              ppSamples <- matrix(nrow = nSamp, ncol = n)   
+              for(i in 1:nSamp) {
+                    values(model, vars) <<- samples[i, ]
+                    model$simulate(simNodes, includeData = TRUE)
+                    ppSamples[i, ] <- values(model, dataNodes)
+              }
+              returnType(double(2))       
+              return(ppSamples)
+          })
+
+# Run the function on our data
+## Create the sampler for this model and this MCMC.
+ppSampler <- ppSamplerNF(model, TSSmcmc)
+```
+### Compile the nimbleFunction into C++
+```{r}
+cppSampler <- compileNimble(ppSampler, project = model)
+```
+
+### Run the nimbleFunction and get sample predictions
+```{r}
+ppSamples <- cppSampler$run(samples)
+```
+
+### Doing the posterior predictive checks
+At this point, we can implement the check we want using our chosen discrepancy measures. We will use the mean, median, min, and max of the TSS error. We will also plot the posterior predictive distribution of the TSS error. We will do this for each of our four models.
+```{r}
+png('../Output/posterior_pred_plots.png')
+# Define a list of statistics to calculate
+statsList <- list(
+  mean = list(func = mean, obs = mean(std_df$tss.err)),
+  median = list(func = median, obs = median(std_df$tss.err)),
+  min = list(func = min, obs = min(std_df$tss.err)),
+  max = list(func = max, obs = max(std_df$tss.err))
+)
+
+# Setting up a 2x2 plotting area
+par(mfrow = c(2, 2))
+
+# Loop through each statistic
+for (statName in names(statsList)) {
+  # Calculate the statistic for each row in ppSamples
+  ppStat <- apply(ppSamples, 1, statsList[[statName]]$func)
+  
+  # Create the histogram
+  hist(ppStat,
+       main = sprintf("Discrepancy = %s(TSS Error, ppm)", statName),
+       xlab = sprintf("%s(modeled TSS, ppm)", statName),
+       col = rainbow(length(statsList))[statName])
+  
+  # Add observed value line
+  abline(v = statsList[[statName]]$obs, col = 'red')
+}
+
+# Resetting plotting area to default
+par(mfrow = c(1, 1))
+
+dev.off()
+
+```
+Overall, it would appear that our model captures the TSS error well. The bulk of our predicted samples align closely with each observed value (i.e., the red line) for mean, median, and max. However, the observed min seems to be on the lower tail of our predicted distribution, indicating that our model may not simulate the lower error values as well. This could be due to the little number of observed samples at lower (i.e. more negative) values.  The bulk of our values lie near zero, making this harder to simulate without more data.
+
+## Inspect beta differences and impacts on error
+Now that we are fairly confident in our model's ability to simulate the TSS error, we can start to look at the differences in beta values and how they impact the TSS error. We will do this for each of our beta parameters.
+
+### Effect of person ($\beta_1$) on TSS error
+```{r}
+# Get the beta1 samples from the sampler results
+beta1_samples <- samples[ , grepl("beta1", colnames(samples))]
+
+# Assuming beta1_samples is a matrix where each column represents a person
+beta1_df <- as.data.frame(beta1_samples)
+beta1_df$difference_AvAB <- beta1_df$`beta1[1]` - beta1_df$`beta1[2]`
+beta1_df$difference_AvB <- beta1_df$`beta1[1]` - beta1_df$`beta1[3]`
+beta1_df$difference_ABvB <- beta1_df$`beta1[2]` - beta1_df$`beta1[3]`
+
+# Convert to long format for ggplot
+beta1_long_df <- beta1_df %>%
+  mutate(iteration = row_number()) %>%
+  pivot_longer(-iteration, names_to = "person", values_to = "effect")
+
+# Plot the posterior distributions of beta1
+ax <- ggplot(beta1_long_df, aes(x = effect, color = person)) +
+  geom_density(alpha = 0, fill = NA) +  # No fill under the curve
+  labs(title = "Posterior Distributions of Beta1 Coefficients",
+       x = "Effect",
+       y = "Density") +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set2") +
+  theme(legend.title = element_blank())
+ax
+ggsave('../Output/beta1_posterior_distributions.jpg', ax)
+
+summary(beta1_df)
+```
+
+
+### Intercept posterier distribution
+```{r}
+# Get the beta2 samples from the sampler results
+alpha_samples <- samples[ , grepl("alpha", colnames(samples))]
+# Assuming beta2_samples is a matrix where each column represents a solution
+alpha_df <- as.data.frame(alpha_samples)
+
+# Convert to long format for ggplot
+alpha_long_df <- alpha_df %>%
+  mutate(iteration = row_number()) %>%
+  pivot_longer(-iteration, names_to = "solution", values_to = "effect")
+
+# Plot the posterior distributions of beta2
+ax2 <-ggplot(alpha_long_df, aes(x = effect, color = solution)) +
+  geom_density(alpha = 0, fill = NA) +  # No fill under the curve
+  labs(title = "Posterior Distributions of alpha Coefficients",
+       x = "Effect",
+       y = "Density") +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.title = element_blank())
+ax2
+
+ggsave('../Output/alpha_posterior_distributions.jpg', ax2)
+
+summary(alpha_df)
+```
+
+### Sigma posterier distribution
+```{r}
+# Get the sigma samples from the sampler results
+sigma_samples <- samples[ , grepl("sigma", colnames(samples))]
+# Assuming sigma_samples is a matrix where each column represents a solution
+sigma_df <- as.data.frame(sigma_samples)
+
+# Convert to long format for ggplot
+sigma_long_df <- sigma_df %>%
+  mutate(iteration = row_number()) %>%
+  pivot_longer(-iteration, names_to = "solution", values_to = "effect")
+
+# Plot the posterior distributions of beta2
+ax2 <-ggplot(sigma_long_df, aes(x = effect, color = solution)) +
+  geom_density(alpha = 0, fill = NA) +  # No fill under the curve
+  labs(title = "Posterior Distributions of sigma Coefficients",
+       x = "Effect",
+       y = "Density") +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.title = element_blank())
+ax2
+
+ggsave('../Output/sigma_posterior_distributions.jpg', ax2)
+
+summary(sigma_df)
+```
+
+## Running Monte Carlo Expectation Maximization
+```{r}
+# TODO: Still working on this...
+# model2 <- model$newModel()
+# 
+# box = list(list(c("alpha","beta"), c(0, Inf)))
+# 
+# pumpMCEM <- buildMCEM(model = pump2, latentNodes = "theta[1:10]",
+#                       boxConstraints = box)
+# pumpMLE <- pumpMCEM$run()
+```
+
