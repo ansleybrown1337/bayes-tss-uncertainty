@@ -6,7 +6,7 @@ Agricultural Data Scientist <br/>
 [ansleybrown1337@gmail.com](mailto:ansleybrown1337@gmail.com) <br/>
 [Personal Website](https://sites.google.com/view/ansleyjbrown/)
 
-This project aims to apply Bayesian Inference and Markov Chain Monte Carlo (MCMC) methods to quantify uncertainty in **Total Suspended Solids (TSS)** measurements and improve the overall accuracy and relaibility of reported TSS values for better decision-making by water resource managers and other stakeholders. 
+This project aims to apply [Bayesian Inference](https://www.youtube.com/watch?v=guTdrfycW2Q) and [Markov Chain Monte Carlo (MCMC)](https://link.springer.com/article/10.3758/s13423-016-1015-8) methods to quantify uncertainty in **Total Suspended Solids (TSS)** measurements and improve the overall accuracy and relaibility of reported TSS values for better decision-making by water resource managers and other stakeholders. 
 
 In our lab, every time we process a batch of water samples for TSS analysis, we also analyze a sample of de-ionized water (DI; ppm of 0) and a sample of a 100 ppm standard solution (STD). We then run these samples through the TSS analysis process, and record the measured TSS values. This allows us to check our TSS analysis process for accuracy and reliability for each batch of samples. Even though we have these standard samples, however, we still have error in our measurements. This error is due to a variety of factors, including the person performing the analysis, the solution being analyzed, and other unknown factors.
 
@@ -18,7 +18,7 @@ Because of this, a need exists to quantify and correct for these confounding fac
 - [Repo Contents](#repo-contents)
 - [Methodology](#methodology)
 - [Results](#results)
-- [Conclusions](#conclusions-(click-here-for-the-important-stuff))
+- [Conclusions (Click here for the important stuff)](#conclusions)
 - [Contribute](#contribute)
 - [License](#license)
 - [References](#references)
@@ -192,6 +192,19 @@ Here are the posterior distributions of the person effects and summary output of
 ##  Max.   : 3.00581   Max.   : 4.9020
 ```
 
+We should also calculate the credible interval for each person effect, letting us know if the distribution of the person effect is significantly different from zero. Here are the 95% credible intervals for each person effect:
+
+| Parameter         | Lower_2.5  | Upper_97.5 | Contains_Zero |
+|-------------------|------------|------------|---------------|
+| beta1[1]          | -2.032260  | 0.4829960  | TRUE          |
+| beta1[2]          | -1.364536  | 1.8886555  | TRUE          |
+| beta1[3]          | -1.559233  | 1.0400379  | TRUE          |
+| difference_AvAB   | -2.858351  | 0.7912884  | TRUE          |
+| difference_AvB    | -1.787295  | 0.7411204  | TRUE          |
+| difference_ABvB   | -1.371366  | 2.3942193  | TRUE          |
+
+Since all of the 95% credible intervals contain zero, we now must consider that even though we see differences on average, these differences could be due to chance.
+
 #### Intercept and Sigma Effects
 Here are the posterior distributions of the intercept and sigma effects, mainly for reference by the statisticians:
 
@@ -206,6 +219,7 @@ Here are the posterior distributions of the intercept and sigma effects, mainly 
 ##  3rd Qu.: 0.5591  
 ##  Max.   : 2.4744
 ```
+Remember that the intercept is an imaginary number that simply represents the average TSS measurement for any person assuming they could analyze the same exact standard solution. In other words, imagine if Person A, Person B, and Person AB all analyzed the same exact standard solution. The intercept is the average TSS measurement for that solution.
 
 ![Sigma Effects](Output/sigma_posterior_distributions.jpg)
 
@@ -218,13 +232,18 @@ Here are the posterior distributions of the intercept and sigma effects, mainly 
 ##  3rd Qu.:4.345  
 ##  Max.   :5.640 
 ```
+One takeaway here worth noting is that the standard deviation (i.e., sigma) is quite large, which suggests that there is a lot of variability in the data. This distribution does not contain zero, which indicates that there is a significant amount of variability in the data that is not due to chance.
 
-## Conclusions (click here for the important stuff)
-In summary we investigated the effects of the person performing the TSS analysis on error incurred as a result.
+## Conclusions
+In summary, we investigated the effects of the person performing the TSS analysis on error incurred as a result. Utilizing a Bayesian analytical framework provided us with a deeper understanding of the uncertainty and variability in our data, an aspect often overlooked in traditional frequentist linear models.
 
-We found that the person performing the analysis has a significant effect on the error incurred. We found that Person A has a significantly lower error than Person B (-0.47614) and Person AB (-0.727308). We also found that Person B has a significantly lower error than Person AB (i.e., Person A and B working together; -0.2512).
+The key takeaway from our findings is that, overall, each technician's performance was quite similar to the others. The presence of zero within the 95% credible intervals for each technician's effect, a unique feature of the Bayesian approach, suggests that while we detected some variability, it does not necessarily indicate substantial or consistent differences in performance. Unlike a frequentist approach that typically offers point estimates and binary conclusions, this Bayesian analysis provides a more nuanced view, with quantified measures of uncertainty for each technician’s TSS readings. The small magnitude of the observed effects further reinforces our conclusion.
 
-In Future work, I will apply the calibrated model to the entire dataset and hone in on the effects of the person performing the analysis on the error incurred for real water samples, and not just standards.
+Practically speaking, this means that any differences in TSS readings among technicians, though noticeable, are likely to be minor and do not point to significant discrepancies in their overall performance statistically speaking. Our Bayesian approach, focusing on distributions and credible intervals, allows us to draw more informed and cautious conclusions. Thus, we might reasonably conclude that all technicians performed their tasks with a comparable level of accuracy, aligning well with the expected standards of precision in our laboratory processes.
+
+In future work, I plan to apply the calibrated Bayesian model to the entire dataset, further honing in on the effects of the person performing the analysis on the error incurred for real water samples, not just standards. This will extend the insights gained from this study, enabling us to better understand and mitigate variability in our analytical processes."
+
+This revised narrative emphasizes the advantages of the Bayesian method, particularly its ability to handle uncertainty and provide a more comprehensive picture than point estimates common in frequentist approaches. It also sets the stage for future work that builds on these Bayesian insights.
 
 ## Contribute
 
