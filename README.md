@@ -92,17 +92,17 @@ $$
 This then can become a deterministic linear model that define the function $f$, where we can quantify the error in TSS measurement $i$ as:
 
 $$
-TSSerr_{i} = \alpha_i + \beta_{1, i} * person_i  + \epsilon_{i}
+TSSerr_{i} = \alpha_k + \beta_{1, k} * person_k  + \epsilon
 $$
 Where:
-- $TSSerr_{i}$ is the error in TSS measurement $i$
-- $\alpha_i$ is the intercept for TSS measurement $i$
-- $\beta_{1, i}$ is the coefficient for the person performing the analysis
-- $\epsilon_{i}$ is the error term for TSS measurement $i$ not accounted for here
+- $TSSerr_{i}$ is the error in TSS measurement $i$ <br/>
+- $\alpha_k$ is the intercept for person $k$ <br/>
+- $\beta_{1, k}$ is the fitting coefficient for the person effect, $k$ <br/>
+- $\epsilon$ is the error term for TSS measurement
 
 We then have to make some assumptions of prior distributions for the parameters in our model:
 
-$TSSerr_{i}$ ~ $N(\mu = \alpha_i + \beta_{0, i} * person_i + \beta_{1, i} * solution_{i}, \sigma)$
+$TSSerr_{i}$ ~ $N(\mu = \alpha_i + \beta_{0, i} * person_i, \sigma)$
 
 $\alpha_i$ ~ $N(\mu = 0, \sigma = 1)$
 
