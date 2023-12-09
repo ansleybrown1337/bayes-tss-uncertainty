@@ -18,7 +18,7 @@ Because of this, a need exists to quantify and correct for these confounding fac
 - [Repo Contents](#repo-contents)
 - [Methodology](#methodology)
 - [Results](#results)
-- [Conclusions (Click here for the important stuff)](#conclusions)
+- [Conclusions (Click here for the important stuff!)](#conclusions)
 - [Contribute](#contribute)
 - [License](#license)
 - [References](#references)
@@ -49,7 +49,7 @@ For this project, I will be using the [NIMBLE](https://r-nimble.org/) package in
 - `Repo Images`: Contains all images for this README file.
 
 ## Methodology
-For exact steps, please navigate to to my ![.Rmd file](Code/tss-uncertainty.Rmd), or the [output .html file](Code/tss-uncertainty.html).
+For exact steps and code, please view the [output .html file](Code/tss-uncertainty.html).
 
 ### **Defining the OWL:**
 #### 1. **State a clear question:**
@@ -84,12 +84,12 @@ We also have two (but effectivley three) people performing the analysis:
 One way of looking at it is like this:
 
 $$
-TSSerr_{i} = f(\beta_0, \beta_1, \epsilon)
+TSSerr_{i} = f(\beta_1, \epsilon)
 $$
 
-*"Measurement error in TSS is some function of the person performing the analysis ($\beta_0$), the solution being analyzed ($\beta_1$), and some unknown error ($\epsilon$)."*
+*"Measurement error in TSS is some function of the person performing the analysis ($\beta_1$),  and some unknown error ($\epsilon$)."*
 
-This then can become a deterministic linear model that define the function $f$, where we can quantify the error in TSS measurement $i$ as:
+This then can become a deterministic linear model that define the function $f()$, where we can quantify the error in TSS measurement $i$ as:
 
 $$
 TSSerr_{i} = \alpha_k + \beta_{1, k} * person_k  + \epsilon
@@ -127,7 +127,7 @@ Where:
 #### 4. **Use the model to build estimator and interpret results**
 Basically, each coefficient of our model (intercept, person, solution) has a unique meaning when our probabilities.
 
-- **$\beta_0$ (Intercept):** This is the baseline level of TSS measurement error when all other predictors (person and solution) are at their reference levels (usually coded as 0 in regression models). It represents the average TSS error when the effects of the person doing the measurement and the solution type are not taken into account. 
+- **$\alpha$ (Intercept):** This is the baseline level of TSS measurement error when all other predictors (person and solution) are at their reference levels (usually coded as 0 in regression models). It represents the average TSS error when the effects of the person doing the measurement and the solution type are not taken into account. 
 
     This variable has no real-world meaning, but is useful and necessary for comparing the effects of the other predictors.
 
@@ -161,89 +161,91 @@ For person effects:
 ### Error Adjustment
 Once we are confident in our model, we can use it to adjust the TSS measurements of real water samples. We will use the posterior distributions of the person and solution effects to adjust the TSS measurements of real water samples.
 
+> [!NOTE]
+> **Spoiler alert:** The results of this analysis suggest that the person and solution effects are not statistically significant, so there was no need to adjust the TSS measurements of real water samples! More information on this can be found in the [Person Effects](#person-effects) section of the results.
+
 ## Results
 ### Model Convergence
+#### Trace and marginal density plots
 We can check the convergence of our model by looking at the trace plots of the MCMC chains for each parameter. If the chains are well-mixed and stationary, it suggests that the model has converged and the MCMC algorithm has sampled the posterior distribution well.
 - [Click here to see the trace plots for the model parameters](Output/trace_density_plots.pdf)
 
-Here is a correlation plot that shows that the chains are well-mixed and stationary:
+You can see in the trace plots that the chains are well-mixed and stationary, and the posterior distributions are well-sampled overall.
+
+#### Correlation plots
+
+Additionaly, we may want to investigate correlation between variables.  The `correlationPlot()` function in the `BayesianTools` package can be used to visualize the correlation between variables in the MCMC chains:
+
 ![Correlation Plot](Output/correlation_plots.png)
+
+#### Gelman chain convergence
+
+Thirdly, we will also check how two chains from the same NIMBLE model converged using the `gelman.diag()` and `gelman.plot()` functions as found in the `BayesianTools` package:
+
+```
+Potential scale reduction factors:
+
+         Point est. Upper C.I.
+alpha             1       1.00
+beta1[1]          1       1.00
+beta1[2]          1       1.00
+beta1[3]          1       1.00
+sigma             1       1.01
+
+Multivariate psrf
+```
+
+![Gelman chain convergence](Output/gelman_plot.png)
+
+The `gelman.diag()` function gives you the scale reduction factors for each parameter. A factor of 1 means that between variance and within chain variance are equal, larger values mean that there is still a notable difference between chains. Often, it is said that everything below 1.1 or so is OK, but note that this is more a rule of thumb. 
+
+The `gelman,plot()` function shows you the development of the scale-reduction over time (chain steps), which is useful to see whether a low chain reduction is also stable (sometimes, the factors go down and then up again, as you will see). The gelman plot is also a nice tool to see roughly where this point is, that is, from which point on the chains seem roughly converged. You can see that both chains converge to eachother around the value of zero after the 10,000 iterations mark. This is a good sign that our model has converged.
+
+### Posterior predictive checks
+Finally, we would like to do the posterior predictive checks for the NIMBLE model to see how it captures TSS error overall. Using a NIMBLE function to generate simulated TSS error, we will compare resulting simulated mean , median, min and max value distributions to the observed TSS error summary statistic:
+
+![Posterior Predictive Check](Output/posterior_pred_plots.png)
+
+Overall, it would appear that our model captures the TSS error well. The bulk of our predicted samples align closely with each observed value (i.e., the red line) for mean, median, and max. However, the observed min seems to be on the lower tail of our predicted distribution, indicating that our model may not simulate the lower error values as well. This could be due to the little number of observed samples at lower (i.e. more negative) values.  The bulk of our values lie near zero, making this harder to simulate without more data.
+
+#### Summary of convergence
+
+Considering all of the above, that is, the trace plots, correlation plots, and gelman plots, we can conclude that our model has converged and the MCMC algorithm has sampled the posterior distribution well.
 
 ### Posterior Comparison Results
 #### Person Effects
-Here are the posterior distributions of the person effects and summary output of the difference distributions:
-![Person Effects](Output/beta1_posterior_distributions.jpg)
+Here are the posterior distributions of the person effects:
+![Person Effects](Output/TSSerror_distributions.jpg)
 
-```
-##     beta1[1]          beta1[2]          beta1[3]       difference_AvAB    
-##  Min.   :-2.6133   Min.   :-2.5534   Min.   :-2.5171   Min.   :-4.585444  
-##  1st Qu.:-0.7905   1st Qu.:-0.2205   1st Qu.:-0.3248   1st Qu.:-1.444647  
-##  Median :-0.3288   Median : 0.3900   Median : 0.1328   Median :-0.737617  
-##  Mean   :-0.3359   Mean   : 0.3914   Mean   : 0.1403   Mean   :-0.727308  
-##  3rd Qu.: 0.1253   3rd Qu.: 0.9910   3rd Qu.: 0.6066   3rd Qu.:-0.001805  
-##  Max.   : 2.1224   Max.   : 4.0656   Max.   : 3.1683   Max.   : 2.940299  
+Even though these distributions are very similar, to determine if there are any significant differences between the person effects, we can take the difference of the posterior distributions of the person effects, then compare the means of the difference distribution to determine the difference in TSS error between each person. In the Bayesian approach, it is critical that you take the difference between *whole distributions* and not just the means of the distributions. This is because the distributions contain information about the uncertainty in the estimates, and the difference of the distributions will also contain information about the uncertainty in the difference of the estimates.
 
-##  difference_AvB     difference_ABvB  
-##  Min.   :-3.33107   Min.   :-3.7963  
-##  1st Qu.:-0.99458   1st Qu.:-0.4737  
-##  Median :-0.47484   Median : 0.2639  
-##  Mean   :-0.47614   Mean   : 0.2512  
-##  3rd Qu.: 0.04926   3rd Qu.: 0.9817  
-##  Max.   : 3.00581   Max.   : 4.9020
-```
+As such, here are the posterior distributions of the differences between the person effects:
+![Person Effect Differences](Output/PersonDifference_distributions.jpg)
 
-We should also calculate the credible interval for each person effect, letting us know if the distribution of the person effect is significantly different from zero. Here are the 95% credible intervals for each person effect:
+Now we can summarize these difference distributions and compare the means, medians, and 95% credible intervals to determine if there are any significant differences between the person effects:
 
-| Parameter         | Lower_2.5  | Upper_97.5 | Contains_Zero |
-|-------------------|------------|------------|---------------|
-| beta1[1]          | -2.032260  | 0.4829960  | TRUE          |
-| beta1[2]          | -1.364536  | 1.8886555  | TRUE          |
-| beta1[3]          | -1.559233  | 1.0400379  | TRUE          |
-| difference_AvAB   | -2.858351  | 0.7912884  | TRUE          |
-| difference_AvB    | -1.787295  | 0.7411204  | TRUE          |
-| difference_ABvB   | -1.371366  | 2.3942193  | TRUE          |
+| Group    | Lower_2.5 | Upper_97.5 | Mean        | Median      | Contains_Zero |
+|----------|-----------|------------|-------------|-------------|---------------|
+| diff_ABvB| -11.74271 | 11.88146   | 0.1638900   | 0.06128693  | TRUE          |
+| diff_AvAB| -11.91252 | 10.71047   | -0.7649288  | -0.62108427 | TRUE          |
+| diff_AvB | -12.28966 | 11.09072   | -0.6010389  | -0.68168872 | TRUE          |
 
-Since all of the 95% credible intervals contain zero, we now must consider that even though we see differences on average, these differences could be due to chance.
 
-#### Intercept and Sigma Effects
-Here are the posterior distributions of the intercept and sigma effects, mainly for reference by the statisticians:
+Keeping in mind that the units for this table are in ppm (or mg/L), the mean and median values for each difference are close to zero (< 1 ppm away). Additionally, the 95% credible intervals for all difference distributions contain zero. This indicates that all lab technicians are performing rather well, with very little difference between persons.
 
-![Intercept Effects](Output/beta0_posterior_distributions.jpg)
+## Conclusion
 
-```
-##  alpha_samples    
-##  Min.   :-2.2315  
-##  1st Qu.:-0.2536  
-##  Median : 0.1638  
-##  Mean   : 0.1538  
-##  3rd Qu.: 0.5591  
-##  Max.   : 2.4744
-```
-Remember that the intercept is an imaginary number that simply represents the average TSS measurement for any person assuming they could analyze the same exact standard solution. In other words, imagine if Person A, Person B, and Person AB all analyzed the same exact standard solution. The intercept is the average TSS measurement for that solution.
+This project set out to apply Bayesian Inference and Markov Chain Monte Carlo (MCMC) methods to better understand and quantify the uncertainty in Total Suspended Solids (TSS) measurements in our laboratory setting. The objective was twofold: 1) to quantify measurement uncertainty and 2) to adjust real water sample measurements for improved accuracy and reliability. 
 
-![Sigma Effects](Output/sigma_posterior_distributions.jpg)
+The results from objective 1 were more ideal than expected, as the analysis revealed that while there are slight variations in measurements due to different personnel and other factors, these variations are within an acceptable range (< 1 ppm or mg/L). Furthmore, The 95% credible intervals calculated for each person's measurement errors include zero, indicating that firstly, all persons are having very low TSS error on their standards and secondly, that there is no significant error differences between lab technicians.
 
-```
-##  sigma_samples  
-##  Min.   :3.219  
-##  1st Qu.:3.900  
-##  Median :4.116  
-##  Mean   :4.133  
-##  3rd Qu.:4.345  
-##  Max.   :5.640 
-```
-One takeaway here worth noting is that the standard deviation (i.e., sigma) is quite large, which suggests that there is a lot of variability in the data. This distribution does not contain zero, which indicates that there is a significant amount of variability in the data that is not due to chance.
+Because no significant error was found in the TSS standards, we eliminated the need for adjusting the remaining 'real' water sample TSS measurements. Moving forward, we recommend that the Bayesian framework be applied to future data to ensure that the measurement process remains consistent and reliable between new personnel and new batches of standards.
 
-## Conclusions
-In summary, we investigated the effects of the person performing the TSS analysis on error incurred as a result. Utilizing a Bayesian analytical framework provided us with a deeper understanding of the uncertainty and variability in our data, an aspect often overlooked in traditional frequentist linear models.
+In summary, the application of Bayesian Inference and MCMC methods has successfully provided a deeper understanding of the uncertainties in TSS measurements in our laboratory. The findings affirm the accuracy and consistency of our measurement procedures, bolstering confidence in the data used for environmental analysis and decision-making. The project not only highlights the effectiveness of the current laboratory practices but also lays a foundation for future research and continuous improvement in the field of environmental monitoring.
 
-The key takeaway from our findings is that, overall, each technician's performance was quite similar to the others. The presence of zero within the 95% credible intervals for each technician's effect, a unique feature of the Bayesian approach, suggests that while we detected some variability, it does not necessarily indicate substantial or consistent differences in performance. Unlike a frequentist approach that typically offers point estimates and binary conclusions, this Bayesian analysis provides a more nuanced view, with quantified measures of uncertainty for each technician’s TSS readings. The small magnitude of the observed effects further reinforces our conclusion.
+---
 
-Practically speaking, this means that any differences in TSS readings among technicians, though noticeable, are likely to be minor and do not point to significant discrepancies in their overall performance statistically speaking. Our Bayesian approach, focusing on distributions and credible intervals, allows us to draw more informed and cautious conclusions. Thus, we might reasonably conclude that all technicians performed their tasks with a comparable level of accuracy, aligning well with the expected standards of precision in our laboratory processes.
-
-In future work, I plan to apply the calibrated Bayesian model to the entire dataset, further honing in on the effects of the person performing the analysis on the error incurred for real water samples, not just standards. This will extend the insights gained from this study, enabling us to better understand and mitigate variability in our analytical processes."
-
-This revised narrative emphasizes the advantages of the Bayesian method, particularly its ability to handle uncertainty and provide a more comprehensive picture than point estimates common in frequentist approaches. It also sets the stage for future work that builds on these Bayesian insights.
+**[Return to Top](#table-of-contents)**
 
 ## Contribute
 

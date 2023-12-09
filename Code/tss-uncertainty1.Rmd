@@ -211,9 +211,15 @@ combinedchains = mcmc.list(
   as.mcmc(TSSresults$samples$chain1), 
   as.mcmc(TSSresults$samples$chain2)
   )
+
+png('../Output/gelman_plot.png')
+gelman.plot(combinedchains)
+dev.off()
+
 plot(combinedchains)
 gelman.diag(combinedchains)
 gelman.plot(combinedchains)
+
 ```
 The gelman.diag gives you the scale reduction factors for each parameter. A factor of 1 means that between variance and within chain variance are equal, larger values mean that there is still a notable difference between chains. Often, it is said that everything below 1.1 or so is OK, but note that this is more a rule of thumb. The gelman,plot shows you the development of the scale-reduction over time (chain steps), which is useful to see whether a low chain reduction is also stable (sometimes, the factors go down and then up again, as you will see). Also, note that for any real analysis, you have to make sure to discard any bias that arises from the starting point of your chain (burn-in), typical values here are a few 1000-10000 steps. The gelman plot is also a nice tool to see roughly where this point is, that is, from which point on the chains seem roughly converged.
 
@@ -228,10 +234,10 @@ ppSamplerNF <- nimbleFunction(
           setup = function(model, mcmc) {
               dataNodes <- model$getNodeNames(dataOnly = TRUE)
               parentNodes <- model$getParents(dataNodes, stochOnly = TRUE)
-              cat("Stochastic parents of data are:\n", paste(parentNodes, collapse = ','), ".\n\n")
+              cat("Stochastic parents of data are:\n", paste(parentNodes, collapse = ','), "\n\n")
               simNodes <- model$getDependencies(parentNodes, self = FALSE)
               vars <- mcmc$mvSamples$getVarNames()  # need ordering of variables in mvSamples / samples matrix
-              cat("Using posterior samples of:\n", paste(vars, collapse = ','), ".\n\n")
+              cat("Using posterior samples of:\n", paste(vars, collapse = ','), "\n\n")
               n <- length(model$expandNodeNames(dataNodes, returnScalarComponents = TRUE))
           },
           run = function(samples = double(2)) {
@@ -244,7 +250,8 @@ ppSamplerNF <- nimbleFunction(
               }
               returnType(double(2))       
               return(ppSamples)
-          })
+          }
+          )
 
 # Run the function on our data
 ## Create the sampler for this model and this MCMC.
@@ -299,90 +306,10 @@ dev.off()
 Overall, it would appear that our model captures the TSS error well. The bulk of our predicted samples align closely with each observed value (i.e., the red line) for mean, median, and max. However, the observed min seems to be on the lower tail of our predicted distribution, indicating that our model may not simulate the lower error values as well. This could be due to the little number of observed samples at lower (i.e. more negative) values.  The bulk of our values lie near zero, making this harder to simulate without more data.
 
 ## Inspect beta differences and impacts on error
-Now that we are fairly confident in our model's ability to simulate the TSS error, we can start to look at the differences in beta values and how they impact the TSS error. We will do this for each of our beta parameters.
-
-### Effect of person ($\beta_1$) on TSS error
-```{r}
-# Get the beta1 samples from the sampler results
-beta1_samples <- samples[ , grepl("beta1", colnames(samples))]
-
-# Assuming beta1_samples is a matrix where each column represents a person
-beta1_df <- as.data.frame(beta1_samples)
-beta1_df$difference_AvAB <- beta1_df$`beta1[1]` - beta1_df$`beta1[2]`
-beta1_df$difference_AvB <- beta1_df$`beta1[1]` - beta1_df$`beta1[3]`
-beta1_df$difference_ABvB <- beta1_df$`beta1[2]` - beta1_df$`beta1[3]`
-
-# Convert to long format for ggplot
-beta1_long_df <- beta1_df %>%
-  mutate(iteration = row_number()) %>%
-  pivot_longer(-iteration, names_to = "person", values_to = "effect") %>%
-  mutate(type = ifelse(grepl("difference", person), "difference", "beta"))
-
-# Plot the posterior distributions of beta1
-ax <- ggplot(beta1_long_df, aes(x = effect, color = person, linetype = type)) +
-  geom_density() +  # Default color and fill
-  scale_linetype_manual(values = c("solid", "dashed")) +  # Solid for beta, dashed for differences
-  labs(title = "Posterior Distributions of Beta1 Coefficients",
-       x = "Effect",
-       y = "Density") +
-  theme_minimal() +
-  theme(legend.title = element_blank())
-ax
-ggsave('../Output/beta1_posterior_distributions.jpg', ax)
-
-summary(beta1_df)
-```
-From here, let's calculate the lower (2.5%) and upper (97.5%) bounds of the 95% credible intervals for each column.
+Now that we are fairly confident in our model's ability to simulate the TSS error, we can start to look at the differences between lab technician prowess by simulating errors by person and comparing distributions using the original model:
 
 ```{r}
-# Calculate the 95% credible intervals for each column in beta1_df
-credible_intervals <- apply(beta1_df, 2, function(x) {
-  quantile(x, probs = c(0.025, 0.975))
-})
-
-# Convert to a more readable format (data frame)
-credible_intervals_df <- as.data.frame(t(credible_intervals))
-names(credible_intervals_df) <- c("Lower_2.5", "Upper_97.5")
-
-# Add a column to check if zero is in the interval
-credible_intervals_df$Contains_Zero <- with(credible_intervals_df, 
-                                            Lower_2.5 <= 0 & Upper_97.5 >= 0)
-
-# View the credible intervals
-print(credible_intervals_df)
-```
-While we observe mean differences across the parameters that are not zero, the 95% credible intervals include zero, indicating substantial uncertainty about these effects.
-
-### Intercept posterier distribution
-```{r}
-# Get the beta2 samples from the sampler results
-alpha_samples <- samples[ , grepl("alpha", colnames(samples))]
-# Assuming beta2_samples is a matrix where each column represents a solution
-alpha_df <- as.data.frame(alpha_samples)
-
-# Convert to long format for ggplot
-alpha_long_df <- alpha_df %>%
-  mutate(iteration = row_number()) %>%
-  pivot_longer(-iteration, names_to = "solution", values_to = "effect")
-
-# Plot the posterior distributions of beta2
-ax2 <-ggplot(alpha_long_df, aes(x = effect, color = solution)) +
-  geom_density(alpha = 0, fill = NA) +  # No fill under the curve
-  labs(title = "Posterior Distributions of alpha Coefficients",
-       x = "Effect",
-       y = "Density") +
-  theme_minimal() +
-  scale_color_brewer(palette = "Set1") +
-  theme(legend.title = element_blank())
-ax2
-
-ggsave('../Output/alpha_posterior_distributions.jpg', ax2)
-
-summary(alpha_df)
-```
-
-```{r}
-# posterior W distributions to show actual TSS error
+# posterior W distributions to simulate TSS error by person
 samples_df <- as.data.frame(samples)
 errA <- rnorm(1000, samples_df$alpha + samples_df$`beta1[1]`, samples_df$sigma)
 errAB <- rnorm(1000, samples_df$alpha + samples_df$`beta1[2]`, samples_df$sigma)
@@ -423,6 +350,9 @@ plot_diffs <- ggplot(diffs_df, aes(x = value, fill = group)) +
 ggsave('../Output/TSSerror_distributions.jpg', plot_errors, device = "jpeg")
 ggsave('../Output/PersonDifference_distributions.jpg', plot_diffs, device = "jpeg")
 
+plot_diffs
+plot_errors
+
 # Create a list containing all the vectors
 all_vars <- list(errA = errA, errAB = errAB, errB = errB, 
                  diff_AvAB = diff_AvAB, diff_AvB = diff_AvB, diff_ABvB = diff_ABvB)
@@ -434,17 +364,100 @@ for (var_name in names(all_vars)) {
   cat("\n") # For better readability
 }
 ```
-In practice, our analysis suggests there were average differences in TSS readings between lab technicians. However, these averages do not decisively indicate that any one technician consistently had higher or lower error rates than others. It's important to note that while we observed these differences, the variability in the data is such that the actual error associated with each technician could plausibly be zero. Essentially, what this means is that while we can identify trends in the data, there is significant uncertainty around these estimates. This analysis provides us with a quantified measure of this uncertainty for each technician’s TSS readings. For practical purposes, this means that while we can speculate about differences in performance among technicians, we should be cautious about making definitive judgments based on these results alone.
 
-## Running Monte Carlo Expectation Maximization
+From here, let's calculate the lower (2.5%) and upper (97.5%) bounds of the 95% credible intervals for each difference distribution, as well as the mean and median values.
+
 ```{r}
-# TODO: Still working on this...
-# model2 <- model$newModel()
-# 
-# box = list(list(c("alpha","beta"), c(0, Inf)))
-# 
-# pumpMCEM <- buildMCEM(model = pump2, latentNodes = "theta[1:10]",
-#                       boxConstraints = box)
-# pumpMLE <- pumpMCEM$run()
+# Function to calculate the 95% credible interval, mean, and median
+calc_stats <- function(df) {
+  quantiles <- quantile(df$value, probs = c(0.025, 0.975))
+  mean_val <- mean(df$value)
+  median_val <- median(df$value)
+  c(Lower = quantiles[1], Upper = quantiles[2], Mean = mean_val, Median = median_val)
+}
+
+# Apply the function to each group and create a data frame
+stats_list <- lapply(split(diffs_df, diffs_df$group), calc_stats)
+
+# Convert the list to a data frame
+stats_df <- do.call(rbind, stats_list)
+rownames(stats_df) <- names(stats_list)
+
+# Reset the column names
+colnames(stats_df) <- c("Lower_2.5", "Upper_97.5", "Mean", "Median")
+
+# Convert row names to a column (Group)
+stats_df <- data.frame(Group = rownames(stats_df), stats_df, row.names = NULL)
+
+# Add a column to check if zero is in the interval
+stats_df$Contains_Zero <- with(stats_df, 
+                               Lower_2.5 <= 0 & Upper_97.5 >= 0)
+
+# View the statistics
+print(stats_df)
+```
+Keeping in mind that the units for this table are in ppm (mg/L), the mean and median values for each difference are close to zero (< 1 ppm away). Additionally, the 95% credible intervals for all difference distributions contain zero. This indicates that all lab technicians are performing rather well, with very little difference between persons.
+
+### Supplementary material
+For this study, we only needed to look at the simulated TSS results as shown above.  However, it's also worth including the resulting samples and distributions for the intercept (i.e., $\alpha$) and person effect (i.e., $\beta$),
+
+#### Intercept posterier distribution
+```{r}
+# Get the beta2 samples from the sampler results
+alpha_samples <- samples[ , grepl("alpha", colnames(samples))]
+# Assuming beta2_samples is a matrix where each column represents a solution
+alpha_df <- as.data.frame(alpha_samples)
+
+# Convert to long format for ggplot
+alpha_long_df <- alpha_df %>%
+  mutate(iteration = row_number()) %>%
+  pivot_longer(-iteration, names_to = "solution", values_to = "effect")
+
+# Plot the posterior distributions of beta2
+ax2 <-ggplot(alpha_long_df, aes(x = effect, color = solution)) +
+  geom_density(alpha = 0, fill = NA) +  # No fill under the curve
+  labs(title = "Posterior Distributions of alpha Coefficients",
+       x = "Effect",
+       y = "Density") +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.title = element_blank())
+ax2
+
+ggsave('../Output/alpha_posterior_distributions.jpg', ax2)
+
+summary(alpha_df)
+```
+
+#### Effect of person ($\beta_1$) on TSS error
+```{r}
+# Get the beta1 samples from the sampler results
+beta1_samples <- samples[ , grepl("beta1", colnames(samples))]
+
+# Assuming beta1_samples is a matrix where each column represents a person
+beta1_df <- as.data.frame(beta1_samples)
+beta1_df$difference_AvAB <- beta1_df$`beta1[1]` - beta1_df$`beta1[2]`
+beta1_df$difference_AvB <- beta1_df$`beta1[1]` - beta1_df$`beta1[3]`
+beta1_df$difference_ABvB <- beta1_df$`beta1[2]` - beta1_df$`beta1[3]`
+
+# Convert to long format for ggplot
+beta1_long_df <- beta1_df %>%
+  mutate(iteration = row_number()) %>%
+  pivot_longer(-iteration, names_to = "person", values_to = "effect") %>%
+  mutate(type = ifelse(grepl("difference", person), "difference", "beta"))
+
+# Plot the posterior distributions of beta1
+ax <- ggplot(beta1_long_df, aes(x = effect, color = person, linetype = type)) +
+  geom_density() +  # Default color and fill
+  scale_linetype_manual(values = c("solid", "dashed")) +  # Solid for beta, dashed for differences
+  labs(title = "Posterior Distributions of Beta1 Coefficients",
+       x = "Effect",
+       y = "Density") +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+ax
+ggsave('../Output/beta1_posterior_distributions.jpg', ax)
+
+summary(beta1_df)
 ```
 
