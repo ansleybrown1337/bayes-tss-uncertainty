@@ -63,10 +63,12 @@ The uncertainty in TSS measurements is a function of the person performing the a
 
 First, we must define what exactly we're looking for, that is, what is the error in our TSS measurements? We can define this as the difference between the measured value and the true value of the standard solution (DI or STD), or:
 
+
 $$
 TSSerr_{i, k} = TSS_{i, k} - TSS_{std, i, k}
 $$
     
+
 Where:
 - $TSSerr_{i, k}$ is the error in TSS measurement $i$ and standard solution, $k$
 - $TSS_{i, k}$ is the measured TSS value for measurement $i$ and standard solution, $k$
