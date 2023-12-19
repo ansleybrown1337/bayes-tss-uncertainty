@@ -47,7 +47,9 @@ package.list <- c(
   'coda',
   'ggplot2',
   'dplyr',
-  'tidyr'
+  'tidyr',
+  'dagitty',
+  'ggdag'
   )
 packageLoad <- function(packages){
   for (i in packages) {
@@ -59,6 +61,24 @@ packageLoad <- function(packages){
 }
 packageLoad(package.list)
 ```
+
+```{r}
+# Create DAG from https://www.dagitty.net/
+g <- dagitty('dag{
+  bb="-3.196,-3.548,3.094,2.204"
+  "Scale Err." [latent,pos="2.570,1.704"]
+  "Std. Solution" [exposure,pos="-2.672,1.349"]
+  "TSS Err." [outcome,pos="0.043,-0.004"]
+  Person [exposure,pos="0.059,-3.048"]
+  "Scale Err." -> "TSS Err."
+  "Std. Solution" -> "TSS Err."
+  Person -> "TSS Err."
+}'
+)
+plot(g)
+
+```
+
 
 ```{r}
 # Load data
