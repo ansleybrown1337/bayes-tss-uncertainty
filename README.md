@@ -42,7 +42,7 @@ For this project, I will be using the work flow outlined by Dr. Richard McElreat
 For this project, I will be using the [NIMBLE](https://r-nimble.org/) package in R to implement the Bayesian models and MCMC algorithms. NIMBLE is a flexible, robust, and efficient package for Bayesian statistical modeling, and is well-suited for this project.
 
 > [!NOTE]
-> I repeated this analysis using Stan and the rethinking package later on. You can find that analysis [here](./Code/tss-uncertainty-stan.html).
+> I repeated this analysis using Stan and the rethinking package later on. You can find that analysis [here](https://ansleybrown1337.github.io/html_projects/tss-uncertainty-stan.html).
 
 ## Repo Contents
 - `README.md`: This file, serves as a project overview.
