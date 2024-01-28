@@ -265,4 +265,7 @@ This project is licensed under the GNU GPL 2.0 License. See the [LICENSE.md](LIC
 
 ## References
 
-- **NIMBLE Development Team. 2023.** *NIMBLE: MCMC, Particle Filtering, and Programmable Hierarchical Modeling.* doi: [10.5281/zenodo.1211190](https://doi.org/10.5281/zenodo.1211190). R package version 1.0.1, [https://cran.r-project.org/package=nimble](https://cran.r-project.org/package=nimble).
+- **NIMBLE Development Team (2023).** *NIMBLE: MCMC, Particle Filtering, and Programmable Hierarchical Modeling.* doi: [10.5281/zenodo.1211190](https://doi.org/10.5281/zenodo.1211190). R package version 1.0.1, [https://cran.r-project.org/package=nimble](https://cran.r-project.org/package=nimble).
+
+- **McElreath R (2023).** _rethinking: Statistical
+  Rethinking book package_. R package version 2.40.
