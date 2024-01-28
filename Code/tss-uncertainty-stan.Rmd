@@ -144,13 +144,15 @@ mTSS <- ulam(
         sigma_a ~ dexp(1)
     ), data=dat , chains=4, cores = 4)
 ```
-
+## Results
+### Model Convergence and Summary
 ```{r}
 precis(mTSS, depth = 2)
 traceplot(mTSS, n_cols=2, lwd=1)
 trankplot(mTSS, n_cols=2, lwd=2)
 ```
 
+### Posterior Predictions and Summary
 ```{r}
 post <- extract.samples(mTSS)
 ```
@@ -202,9 +204,9 @@ pred_technician2 <- post_pred[(n_pred_per_technician + 1):(n_pred_per_technician
 pred_technician3 <- post_pred[((n_pred_per_technician * 2) + 1):(n_pred_per_technician * 3), ]
 
 # Step 3: Graph the Densities
-dens(pred_technician1, lwd=4, col=2, xlab="Predicted Values (TSS)")
-dens(pred_technician2, lwd=4, col=4, xlab="Predicted Values (TSS)", add=TRUE)
-dens(pred_technician3, lwd=4, col=6, xlab="Predicted Values (TSS)", add=TRUE)
+dens(pred_technician1, lwd=4, col=2, xlab="Predicted Values (TSS Error)")
+dens(pred_technician2, lwd=4, col=4, xlab="Predicted Values (TSS Error)", add=TRUE)
+dens(pred_technician3, lwd=4, col=6, xlab="Predicted Values (TSS Error)", add=TRUE)
 
 ```
 
