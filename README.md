@@ -28,6 +28,9 @@ Because of this, a need exists to quantify and correct for these confounding fac
 1. **Quantify Measurement Uncertainty**: Use Bayesian Inference and MCMC to determine the uncertainty in TSS measurements compared to standard measurements.
 2. **Adjust Real Water Sample Measurements**: Apply the quantified error margins to adjust TSS measurements obtained from real water samples.
 
+> ![NOTE]
+> Results from analysis showed that lab technicians performed really well (i.e., the TSS error was small and relatively indifferent between persons and solutions).  As such, no need was found to adjust TSS measurements from real water samples.
+
 ## Getting Started
 For this project, I will be using the work flow outlined by Dr. Richard McElreath in his book, [Statistical Rethinking](https://xcelab.net/rm/statistical-rethinking/). This flow is as follows, stated in [Chapter 4, Geocentric Models](https://www.youtube.com/watch?v=tNOu-SEacNU&list=PLDcUM9US4XdPz-KxHM4XHt7uUVGWWVSus&index=3):
 1. State a clear question
@@ -37,6 +40,9 @@ For this project, I will be using the work flow outlined by Dr. Richard McElreat
 5. Profit
 
 For this project, I will be using the [NIMBLE](https://r-nimble.org/) package in R to implement the Bayesian models and MCMC algorithms. NIMBLE is a flexible, robust, and efficient package for Bayesian statistical modeling, and is well-suited for this project.
+
+> [!NOTE]
+> I repeated this analysis using Stan and the rethinking package later on. You can find that analysis [here](./Code/tss-uncertainty-stan.html).
 
 ## Repo Contents
 - `README.md`: This file, serves as a project overview.
