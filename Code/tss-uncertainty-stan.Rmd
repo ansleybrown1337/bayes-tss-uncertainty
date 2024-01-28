@@ -26,8 +26,8 @@ auditing Richard McElreath's, [Statistical Rethinking 2023](https://www.youtube.
 ## Table of Contents
 1. [Load packages and data](#load-packages-and-data)
 2. [Defining a causal model (i.e., the DAG)](#defining-a-causal-model)
-3. [Defining a statistical model (i.e., the GOLEM)](#defining-a-statistical-model)
-4. [Defining a likelihood function (i.e., the OWL)](#defining-a-likelihood-function)
+3. [Defining a statistical model](#defining-a-statistical-model)
+4. [Defining a likelihood function using Stan](#defining-a-likelihood-function)
 5. [Results](#results)
 
 ## Load packages and data
@@ -64,34 +64,46 @@ tss_df <- read.csv('../Example Data/TSS_Master_2023.csv')
 
 ```{r}
 # Process data
-  # separate data into two dataframes: standards and real data
-std_list <- c('Stock Solution', 'DI')
-std_df <- tss_df %>% filter(Sample_ID %in% std_list)
-real_df <- tss_df %>% filter(!Sample_ID %in% std_list)
+  # Clean up tss_df first
+  tss_df <- tss_df %>%
+    select( # drop unnecessary columns
+      Batch_no,
+      Sample_ID,
+      Lab_technicians,
+      TSS_mg.L,
+      Notes
+    )
 
-  # calculate error column for standards and center it
-  # NO: it is not usually a good practice to estimate constructed variables
+  # separate data into two dataframes: standards and real data
+    # standard solution df
+    std_list <- c('Stock Solution', 'DI')
+    std_df <- tss_df %>% 
+      filter( # filter out real samples
+        Sample_ID %in% std_list
+      ) %>%
+      mutate( # calculate error from known standard values (100 or 0 ppm)
+        tss.err = ifelse(
+          Sample_ID == 'Stock Solution', 100-TSS_mg.L, 0-TSS_mg.L
+        )
+      ) %>%
+      mutate( # make factors into number cols for ulam() later
+        Sample_ID.num = as.numeric(as.factor(Sample_ID)),
+        Lab_technicians.num = as.numeric(as.factor(Lab_technicians))
+      )
+    # real samples df
+    real_df <- tss_df %>% filter(!Sample_ID %in% std_list)
+
+  # NOTE: it is not usually a good practice to estimate constructed variables
   # (like tss error) instead of the raw output variables (i.e., TSS, mg/L).
   # Specifically, calculating TSS error here assumes linear relationship between
   # tss units and standard solutions, which may not be the case. See
   # https://youtu.be/hnYhJzYAQ60?si=J4CNqn2COmnFTgpE&t=3366
-
-  # Therefore the below code is commented out and will not be used here.
-
-std_df <- std_df %>% mutate(
-  tss.err = ifelse(Sample_ID == 'Stock Solution', 100-TSS_mg.L, 0-TSS_mg.L)
-  )
-
-  # change our categorical columns of interest into numbers
-std_df$Sample_ID.num <- as.numeric(as.factor(std_df$Sample_ID))
-std_df$Lab_technicians.num <- as.numeric(as.factor(std_df$Lab_technicians))
-
-
+  # HOWEVER, since we know the exact error by using standard solutions, it might be appropriate? I'll come back to this someday...
 ```
 
 
 ## Defining a causal model
-DAGs stands for Directed Acyclic Graphs, which are graphical representations of the causal relationships among variables. DAGs help us to identify the sources of confounding, selection bias, and mediation in our data, and to design appropriate interventions or experiments to test our hypotheses.
+DAG stands for Directed Acyclic Graph, which is a graphical representation of the causal relationships among variables. DAGs identify the sources of confounding relationships, selection bias, and mediation in our data. The causal model facilitates the construction of of a statistical model.
 
 Here is the DAG created for this dataset:
 ```{r}
@@ -107,19 +119,19 @@ g <- dagitty('dag{
 )
 plot(g)
 ```
-The DAG shown here illustrates 2 covariates, Person and Std. Solution, and their causal effect on TSS error as known from the use of D.I. Water (0 ppm) and standard solution (100 ppm)
+The DAG shown here illustrates two covariates, Person and Std. Solution, and their causal effect on TSS error as known from the use of D.I. Water (0 ppm) and standard solution (100 ppm).  In this case, the analysis will focus on identifying the causal effect of person (i.e., lab technician) on TSS error, clustering by standard solution type.  This will allow partial pooling of variance, which may differ depending on the standard solution used to quantify error.
 
 ## Defining a statistical model
 We will use simple linear regression to estimate measurement error. I will
 assume the following form:
 $$ TSSerr_{i} = \alpha_S + \beta_{P} * Person $$
-$$ \alpha_S \sim \mathcal{N}(\bar{\alpha}, \sigma) $$
-$$ \alpha \sim \mathcal{N}(0, 1.5)$$
+$$ \alpha_S \sim N(\bar{\alpha}, \sigma) $$
+$$ \alpha \sim N(0, 1.5)$$
 $$ \sigma \sim \exp(1)$$
 
 Where:
 - $TSSerr_{i}$ is the error in TSS measurement $i$ <br/>
-- $\alpha_S$ is the intercept for solution $S$ <br/>
+- $\alpha_S$ is the intercept for standard solution $S$ <br/>
 - $\beta_{P}$ is the coefficient for each lab technician effect <br/>
 
 ## Defining a likelihood function
@@ -158,56 +170,63 @@ post <- extract.samples(mTSS)
 ```
 
 ```{r}
-# Assuming there are three lab technicians
-n_technicians <- 3  # Number of lab technicians
-n_bP_per_technician <- length(post$bP) / n_technicians  # Number of 'bP' values per technician
-
-# Split 'post$bP' for each lab technician
-bP_technician1 <- post$bP[1:n_bP_per_technician]
-bP_technician2 <- post$bP[(n_bP_per_technician + 1):(n_bP_per_technician * 2)]
-bP_technician3 <- post$bP[((n_bP_per_technician * 2) + 1):(n_bP_per_technician * 3)]
+# create df of bP levels
+bP_df <- as.data.frame(post$bP)
 
 # Plot densities
-dens(bP_technician1, lwd=4, col=2, xlab="bP (Effect of Lab Technician)")
-dens(bP_technician2, lwd=4, col=4, xlab="bP (Effect of Lab Technician)", add=TRUE)
-dens(bP_technician3, lwd=4, col=6, xlab="bP (Effect of Lab Technician)", add=TRUE)
+dens(bP_df$V1, lwd=4, col=2, xlab="bP (Effect of Lab Technician)")
+dens(bP_df$V2, lwd=4, col=4, xlab="bP (Effect of Lab Technician)", add=TRUE)
+dens(bP_df$V3, lwd=4, col=6, xlab="bP (Effect of Lab Technician)", add=TRUE)
+
+# Plot the prior distribution
+# Define the range for x_seq based on the values in bP_df
+x_seq <- seq(from = min(bP_df) - 1, to = max(bP_df) + 1, length.out = 300)
+
+# Calculate the prior density
+prior_dens <- dnorm(x_seq, mean = 0, sd = 0.5)
+
+# Add the prior distribution to the plot
+lines(x_seq, prior_dens, lwd = 2, col = "black", lty = 2)
 ```
 
 
 ```{r}
-# Assuming 'S' is the solution type variable in your original data and has two levels
-n_S <- length(unique(std_df$Sample_ID.num))  # Number of solution types
-n_a_per_S <- length(post$a) / n_S  # Number of 'a' values per solution type
+# create df of alpha levels
+a_df <- as.data.frame(post$a)
 
-# Split 'post$a' based on solution type
-a_solution1 <- post$a[1:n_a_per_S] # DI Water
-a_solution2 <- post$a[(n_a_per_S + 1):(n_a_per_S * 2)] # 100 ppm solution
 
 # Plot densities
-dens(a_solution1, lwd=4, col=2, xlab="alpha (Effect of Solution Type)")
-dens(a_solution2, lwd=4, col=4, xlab="alpha (Effect of Solution Type)", add=TRUE)
+dens(a_df$V1, lwd=4, col=2, xlab="alpha (Effect of Solution Type)")
+dens(a_df$V2, lwd=4, col=4, xlab="alpha (Effect of Solution Type)", add=TRUE)
 
+# Define the range for x_seq based on the values in bP_df
+x_seq <- seq(from = min(a_df) - 1, to = max(a_df) + 1, length.out = 300)
+
+# Calculate the prior density
+prior_dens <- dnorm(x_seq, mean = 0, sd = 1.5)
+
+# Add the prior distribution to the plot
+lines(x_seq, prior_dens, lwd = 2, col = "black", lty = 2)
 ```
 
 ```{r}
 # Step 1: Generate Posterior Predictions
 post_pred <- sim(mTSS, n=5000)
 
-# Step 2: Stratify Predictions by Lab Technicians
-# Assuming 'P' in 'dat' corresponds to the lab technician
-# and there are 3 lab technicians
-n_technicians <- 3
-n_pred_per_technician <- nrow(post_pred) / n_technicians
+# Convert post_pred to a dataframe
+post_pred_df <- as.data.frame(post_pred)
 
-pred_technician1 <- post_pred[1:n_pred_per_technician, ]
-pred_technician2 <- post_pred[(n_pred_per_technician + 1):(n_pred_per_technician * 2), ]
-pred_technician3 <- post_pred[((n_pred_per_technician * 2) + 1):(n_pred_per_technician * 3), ]
+# Assuming there are 3 lab technicians and each column in post_pred_df corresponds to one
+# Step 2: Stratify Predictions by Lab Technicians
+# Use the dataframe columns directly for each technician
+pred_technician1 <- post_pred_df[[1]]
+pred_technician2 <- post_pred_df[[2]]
+pred_technician3 <- post_pred_df[[3]]
 
 # Step 3: Graph the Densities
 dens(pred_technician1, lwd=4, col=2, xlab="Predicted Values (TSS Error)")
 dens(pred_technician2, lwd=4, col=4, xlab="Predicted Values (TSS Error)", add=TRUE)
 dens(pred_technician3, lwd=4, col=6, xlab="Predicted Values (TSS Error)", add=TRUE)
-
 ```
 
 ```{r}
