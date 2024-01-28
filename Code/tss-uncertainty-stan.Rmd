@@ -188,7 +188,7 @@ prior_dens <- dnorm(x_seq, mean = 0, sd = 0.5)
 # Add the prior distribution to the plot
 lines(x_seq, prior_dens, lwd = 2, col = "black", lty = 2)
 ```
-
+Red represents Person A, Blue represents Person AB, Purple represents Person B, and the black dashed line represents the original prior for reference.
 
 ```{r}
 # create df of alpha levels
@@ -208,6 +208,7 @@ prior_dens <- dnorm(x_seq, mean = 0, sd = 1.5)
 # Add the prior distribution to the plot
 lines(x_seq, prior_dens, lwd = 2, col = "black", lty = 2)
 ```
+Red represents 100 ppm standard solution, Blue represents deionized water (0 ppm), and the black dashed line represents the original prior for reference.
 
 ```{r}
 # Step 1: Generate Posterior Predictions
@@ -228,6 +229,7 @@ dens(pred_technician1, lwd=4, col=2, xlab="Predicted Values (TSS Error)")
 dens(pred_technician2, lwd=4, col=4, xlab="Predicted Values (TSS Error)", add=TRUE)
 dens(pred_technician3, lwd=4, col=6, xlab="Predicted Values (TSS Error)", add=TRUE)
 ```
+Red represents Person A, Blue represents Person AB, and Purple represents Person B.
 
 ```{r}
 # Function to compute summary statistics
