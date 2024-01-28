@@ -1,0 +1,240 @@
+---
+title: "tss-uncertainty-stan"
+author: "A.J. Brown"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Bayesian Inference for TSS Measurement Uncertainty
+By A.J. Brown
+Agricultural Data Scientist
+ansleybrown1337@gmail.com
+[Personal Website](https://sites.google.com/view/ansleyjbrown/)
+
+Description: This script is used to perform Bayesian inference on TSS using
+the [Stan](https://mc-stan.org/rstan/) and [rethinking](https://github.com/rmcelreath/stat_rethinking_2023) 
+packages in R. For more information please view the README.md file
+in the root directory of [this repository](https://github.com/ansleybrown1337/bayes-tss-uncertainty).
+
+I've decided to add this script to re-attempt this problem after informally 
+auditing Richard McElreath's, [Statistical Rethinking 2023](https://www.youtube.com/playlist?list=PLDcUM9US4XdPz-KxHM4XHt7uUVGWWVSus) course. As such, my methodology has changed a bit, and this script will likely be my 'main' script moving forward, with my NIMBLE code for reference.
+
+## Table of Contents
+1. [Load packages and data](#load-packages-and-data)
+2. [Defining a causal model (i.e., the DAG)](#defining-a-causal-model)
+3. [Defining a statistical model (i.e., the GOLEM)](#defining-a-statistical-model)
+4. [Defining a likelihood function (i.e., the OWL)](#defining-a-likelihood-function)
+5. [Results](#results)
+
+## Load packages and data
+```{r, warning=FALSE}
+# Set working directory to repo parent folder
+# Remember to make the knit button knit from current working directory
+#setwd('../')
+```
+
+```{r, warning=FALSE, include=FALSE}
+
+# Load packages
+package.list <- c(
+  'rethinking',
+  'dplyr',
+  'tidyr',
+  'dagitty'
+  )
+packageLoad <- function(packages){
+  for (i in packages) {
+    if (!require(i, character.only = TRUE)) {
+      install.packages(i)
+      library(i, character.only = TRUE)
+    }
+  }
+}
+packageLoad(package.list)
+```
+
+```{r}
+# Load data
+tss_df <- read.csv('../Example Data/TSS_Master_2023.csv')
+```
+
+```{r}
+# Process data
+  # separate data into two dataframes: standards and real data
+std_list <- c('Stock Solution', 'DI')
+std_df <- tss_df %>% filter(Sample_ID %in% std_list)
+real_df <- tss_df %>% filter(!Sample_ID %in% std_list)
+
+  # calculate error column for standards and center it
+  # NO: it is not usually a good practice to estimate constructed variables
+  # (like tss error) instead of the raw output variables (i.e., TSS, mg/L).
+  # Specifically, calculating TSS error here assumes linear relationship between
+  # tss units and standard solutions, which may not be the case. See
+  # https://youtu.be/hnYhJzYAQ60?si=J4CNqn2COmnFTgpE&t=3366
+
+  # Therefore the below code is commented out and will not be used here.
+
+std_df <- std_df %>% mutate(
+  tss.err = ifelse(Sample_ID == 'Stock Solution', 100-TSS_mg.L, 0-TSS_mg.L)
+  )
+
+  # change our categorical columns of interest into numbers
+std_df$Sample_ID.num <- as.numeric(as.factor(std_df$Sample_ID))
+std_df$Lab_technicians.num <- as.numeric(as.factor(std_df$Lab_technicians))
+
+
+```
+
+
+## Defining a causal model
+DAGs stands for Directed Acyclic Graphs, which are graphical representations of the causal relationships among variables. DAGs help us to identify the sources of confounding, selection bias, and mediation in our data, and to design appropriate interventions or experiments to test our hypotheses.
+
+Here is the DAG created for this dataset:
+```{r}
+# Create DAG from https://www.dagitty.net/
+g <- dagitty('dag{
+  bb="-3.196,-3.548,3.094,2.204"
+  "Std. Solution" [exposure,pos="-2.672,1.349"]
+  "TSS" [outcome,pos="0.043,-0.004"]
+  Person [exposure,pos="0.059,-3.048"]
+  "Std. Solution" -> "TSS"
+  Person -> "TSS"
+}'
+)
+plot(g)
+```
+The DAG shown here illustrates 2 covariates, Person and Std. Solution, and their causal effect on TSS error as known from the use of D.I. Water (0 ppm) and standard solution (100 ppm)
+
+## Defining a statistical model
+We will use simple linear regression to estimate measurement error. I will
+assume the following form:
+$$ TSSerr_{i} = \alpha_S + \beta_{P} * Person $$
+$$ \alpha_S \sim \mathcal{N}(\bar{\alpha}, \sigma) $$
+$$ \alpha \sim \mathcal{N}(0, 1.5)$$
+$$ \sigma \sim \exp(1)$$
+
+Where:
+- $TSSerr_{i}$ is the error in TSS measurement $i$ <br/>
+- $\alpha_S$ is the intercept for solution $S$ <br/>
+- $\beta_{P}$ is the coefficient for each lab technician effect <br/>
+
+## Defining a likelihood function
+
+```{r}
+# create data vector
+dat <- list(
+  E = std_df$tss.err,
+  P = std_df$Lab_technicians.num,
+  S = std_df$Sample_ID.num
+)
+
+# create function using Stan
+mTSS <- ulam( 
+    alist(
+        E ~ dnorm(mu, sigma),
+        sigma ~ dexp(1),
+        mu <- a[S] + bP[P],
+        bP[P] ~ dnorm(0, 0.5),
+        a[S] ~ dnorm(a_bar, sigma_a),
+        a_bar ~ dnorm(0, 1.5),
+        sigma_a ~ dexp(1)
+    ), data=dat , chains=4, cores = 4)
+```
+
+```{r}
+precis(mTSS, depth = 2)
+traceplot(mTSS, n_cols=2, lwd=1)
+trankplot(mTSS, n_cols=2, lwd=2)
+```
+
+```{r}
+post <- extract.samples(mTSS)
+```
+
+```{r}
+# Assuming there are three lab technicians
+n_technicians <- 3  # Number of lab technicians
+n_bP_per_technician <- length(post$bP) / n_technicians  # Number of 'bP' values per technician
+
+# Split 'post$bP' for each lab technician
+bP_technician1 <- post$bP[1:n_bP_per_technician]
+bP_technician2 <- post$bP[(n_bP_per_technician + 1):(n_bP_per_technician * 2)]
+bP_technician3 <- post$bP[((n_bP_per_technician * 2) + 1):(n_bP_per_technician * 3)]
+
+# Plot densities
+dens(bP_technician1, lwd=4, col=2, xlab="bP (Effect of Lab Technician)")
+dens(bP_technician2, lwd=4, col=4, xlab="bP (Effect of Lab Technician)", add=TRUE)
+dens(bP_technician3, lwd=4, col=6, xlab="bP (Effect of Lab Technician)", add=TRUE)
+```
+
+
+```{r}
+# Assuming 'S' is the solution type variable in your original data and has two levels
+n_S <- length(unique(std_df$Sample_ID.num))  # Number of solution types
+n_a_per_S <- length(post$a) / n_S  # Number of 'a' values per solution type
+
+# Split 'post$a' based on solution type
+a_solution1 <- post$a[1:n_a_per_S] # DI Water
+a_solution2 <- post$a[(n_a_per_S + 1):(n_a_per_S * 2)] # 100 ppm solution
+
+# Plot densities
+dens(a_solution1, lwd=4, col=2, xlab="alpha (Effect of Solution Type)")
+dens(a_solution2, lwd=4, col=4, xlab="alpha (Effect of Solution Type)", add=TRUE)
+
+```
+
+```{r}
+# Step 1: Generate Posterior Predictions
+post_pred <- sim(mTSS, n=5000)
+
+# Step 2: Stratify Predictions by Lab Technicians
+# Assuming 'P' in 'dat' corresponds to the lab technician
+# and there are 3 lab technicians
+n_technicians <- 3
+n_pred_per_technician <- nrow(post_pred) / n_technicians
+
+pred_technician1 <- post_pred[1:n_pred_per_technician, ]
+pred_technician2 <- post_pred[(n_pred_per_technician + 1):(n_pred_per_technician * 2), ]
+pred_technician3 <- post_pred[((n_pred_per_technician * 2) + 1):(n_pred_per_technician * 3), ]
+
+# Step 3: Graph the Densities
+dens(pred_technician1, lwd=4, col=2, xlab="Predicted Values (TSS)")
+dens(pred_technician2, lwd=4, col=4, xlab="Predicted Values (TSS)", add=TRUE)
+dens(pred_technician3, lwd=4, col=6, xlab="Predicted Values (TSS)", add=TRUE)
+
+```
+
+```{r}
+# Function to compute summary statistics
+compute_summary <- function(predictions) {
+    list(
+        mean = mean(predictions),
+        sd = sd(predictions),
+        quantile_2.5 = quantile(predictions, probs = 0.025),
+        quantile_97.5 = quantile(predictions, probs = 0.975)
+    )
+}
+
+# Calculate summary statistics for each technician
+summary_technician1 <- compute_summary(pred_technician1)
+summary_technician2 <- compute_summary(pred_technician2)
+summary_technician3 <- compute_summary(pred_technician3)
+
+
+# Combine summaries into a data frame
+summary_df <- data.frame(
+    Technician = c("Technician 1", "Technician 2", "Technician 3"),
+    Mean = c(summary_technician1$mean, summary_technician2$mean, summary_technician3$mean),
+    SD = c(summary_technician1$sd, summary_technician2$sd, summary_technician3$sd),
+    Quantile_2.5 = c(summary_technician1$quantile_2.5, summary_technician2$quantile_2.5, summary_technician3$quantile_2.5),
+    Quantile_97.5 = c(summary_technician1$quantile_97.5, summary_technician2$quantile_97.5, summary_technician3$quantile_97.5)
+)
+
+
+print(summary_df)
+
+```
